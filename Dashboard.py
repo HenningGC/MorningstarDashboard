@@ -1,3 +1,20 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+%matplotlib inline
+import urllib.request, json
+from datetime import datetime
+import plotly
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import plotly.express as px
+import plotly.figure_factory as ff
+from tqdm import tqdm
+import requests
+from urllib.request import urlopen, Request
+from bs4 import BeautifulSoup
+
+
 class Dashboard:
     def __init__(self, reference):
         self.df = None
