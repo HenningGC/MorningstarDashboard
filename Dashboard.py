@@ -1,25 +1,9 @@
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-%matplotlib inline
-import urllib.request, json
-from datetime import datetime
-import plotly
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import plotly.express as px
-import plotly.figure_factory as ff
-from tqdm import tqdm
-import requests
-from urllib.request import urlopen, Request
-from bs4 import BeautifulSoup
-
-
 class Dashboard:
     def __init__(self, reference):
         self.df = None
         self.reference = reference
         self.allocation = dict()
+        plt.style.use('seaborn-darkgrid')
         
     def _get_returns_data(self, x):
         
@@ -75,11 +59,49 @@ class Dashboard:
                 #self.allocation[s_name] = self._get_allocation(symbol)
                 
         print(f'Successfuly added data for: {self.df.columns.to_list()}!')
+        
+    def _get_number_assets(self, weights, initial_capital):
+        asset_list = [col for col in self.df.columns]
+        
+        capital_weights = dict()
+        c = 0
+        for asset in asset_list:
+            initial_price = self.df[asset].loc[~self.df[asset].isnull()].iloc[0]
+            n_assets = (initial_capital * weights[c]) // initial_price
+
+            if n_assets >= 1:
+                capital_weights[asset] = n_assets
+            c+=1
+        
+        return capital_weights
+    
+    def _get_dividends(self, portDf):
+        import datetime
+        c = 0
+        for asset in [col.split('_')[1] for col in portDf]:
+            symbol = tD.reference.loc[tD.reference['Name'] == asset,'linkId'].iloc[0]
+            with urllib.request.urlopen(f"https://tools.morningstar.es/api/rest.svc/timeseries_dividend/2nhcdckzon?id={symbol}%5D22%5D1%5D&idtype=Morningstar&frequency=monthly&timePeriod=200&outputType=COMPACTJSON") as url:
+                data = json.loads(url.read().decode())
+                if len(data) > 0:
+                    if c == 0:
+                        data = [ [datetime.datetime.fromtimestamp(i[0]/1000).strftime('%Y-%m-%d'),i[1]] for i in data]
+                        localDf = pd.DataFrame(data, columns = ['Date', f'Dividends_{asset}'])
+                        localDf['Date'] = pd.to_datetime(localDf['Date'])
+                        localDf = localDf.set_index('Date')
+                        divDf = localDf
+                        c+=1
+                    else:
+                        data = [ [datetime.datetime.fromtimestamp(i[0]/1000).strftime('%Y-%m-%d'),i[1]] for i in data]
+                        localDf = pd.DataFrame(data, columns = ['Date', f'Dividends_{asset}'])
+                        localDf['Date'] = pd.to_datetime(localDf['Date'])
+                        localDf = localDf.set_index('Date')
+                        divDf = pd.concat([divDf, localDf], axis = 1)
                 
-    def revenue(self, revDf):
-        pass
+        return divDf
+    
+    
             
-    def custom_portfolio(self, weights, initial_capital):
+    def analyze_portfolio(self, weights, initial_capital):
         
         if not isinstance(weights, list):
             raise TypeError("data must be set to a list")
@@ -91,6 +113,7 @@ class Dashboard:
             raise NameError('Sum of weights has to equal to 1')
                 
         retsDf = self.df.pct_change()
+        capital_weight = self._get_number_assets(weights, initial_capital)
         
         x = 0
         for col in self.df.columns:
@@ -100,9 +123,28 @@ class Dashboard:
         retsDf['PortfolioReturns'] = sum([retsDf[col] for col in retsDf.columns if '_returns' in col])
         
         retsDf['Equity Curve'] = ((retsDf['PortfolioReturns'] + 1).cumprod())*initial_capital
-
+        
+        revDf = pd.DataFrame()
+        divs = self._get_dividends(self.df)
+        
+        for col in divs.columns:
+            s_name = col.split('_')[1]
+            if ('Price_'+col.split('_')[1]) in capital_weight.keys():
+                revDf[f'Revenue_{s_name}'] = divs[col] * capital_weight['Price_'+ col.split('_')[1]]
+                
+                
         retsDf['Equity Curve'].plot()
         plt.title('Portfolio Equity Curve')
+        plt.show()
+        
+        revDf.sum(axis=1).plot()
+        plt.title('Portfolio Dividends')
+        #plt.legend(bbox_to_anchor = (1.80, 0.6))
+        plt.show()
+        
+        revDf['Total Revenue'] = revDf.sum(axis=1)
+        revDf['Total Revenue'].cumsum().plot()
+        plt.title('Portfolio Revenue')
         plt.show()
     
     def MPT(self, constraints):
@@ -121,6 +163,5 @@ class Dashboard:
         #plt.legend(loc='upper left', fontsize=12)
         plt.legend(bbox_to_anchor = (1.05, 0.6))
         #plt.tight_layout()
-        plt.style.use('bmh')
         plt.grid(True)
         plt.show()
