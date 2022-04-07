@@ -5,6 +5,8 @@ class Dashboard:
         self.allocation = dict()
         plt.style.use('seaborn-darkgrid')
         
+        self.c = 0
+        
     def _get_returns_data(self, x):
         
         return (np.log(x/x.shift(1))).cumsum()
@@ -32,7 +34,6 @@ class Dashboard:
         
         localDf = pd.DataFrame()
         self.symbols = isins
-        c = 0
         import datetime
         
         for symbol in set(self.symbols):
@@ -40,7 +41,7 @@ class Dashboard:
                 self.data = json.loads(url.read().decode())
             
             s_name = (self.reference).loc[self.reference['linkId'] == symbol, 'Name'].iloc[0]
-            if c == 0:
+            if self.c == 0:
                 self.data = [ [datetime.datetime.fromtimestamp(i[0]/1000).strftime('%Y-%m-%d'),i[1]] for i in self.data]
                 localDf = pd.DataFrame(self.data, columns = ['Date', f'Price_{s_name}'])
                 localDf['Date'] = pd.to_datetime(localDf['Date'])
@@ -48,7 +49,7 @@ class Dashboard:
                 
                 self.df = localDf
                 #self.allocation[s_name] = self._get_allocation(symbol)
-                c+= 1
+                self.c+= 1
                 
             else:
                 self.data = [ [datetime.datetime.fromtimestamp(i[0]/1000).strftime('%Y-%m-%d'),i[1]] for i in self.data]
@@ -138,13 +139,23 @@ class Dashboard:
         plt.show()
         
         revDf.sum(axis=1).plot()
+        #plt.bar(, revDf.sum(axis=1).index, revDf.sum(axis=1))
         plt.title('Portfolio Dividends')
         #plt.legend(bbox_to_anchor = (1.80, 0.6))
         plt.show()
         
+        if len(revDf) > 0:
+            revSum = pd.DataFrame()
+            revSum['RevSum'] = revDf.sum(axis=1)
+            revSum.groupby(revSum.index.year)['RevSum'].sum().plot()
+            plt.title('Annual Dividend Income')
+            plt.show()
+            print(revSum)
+            print(revSum.groupby(revSum.index.year)['RevSum'].sum())
+        
         revDf['Total Revenue'] = revDf.sum(axis=1)
         revDf['Total Revenue'].cumsum().plot()
-        plt.title('Portfolio Revenue')
+        plt.title('Portfolio Cumulative Income')
         plt.show()
     
     def MPT(self, constraints):
