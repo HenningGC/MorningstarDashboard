@@ -11,6 +11,11 @@ class Dashboard:
         
         return (np.log(x/x.shift(1))).cumsum()
     
+    def get_mean_returns(self):
+        m_rets = self.df.resample('Y').last().pct_change().mean()
+        
+        return m_rets.sort_values(ascending=False)
+    
     def _get_allocation(self, symbol):
         
         req = Request(url=f'https://www.morningstar.es/es/funds/snapshot/snapshot.aspx?id={symbol}',headers={'user-agent':'my-app'})
@@ -79,8 +84,9 @@ class Dashboard:
     def _get_dividends(self, portDf):
         import datetime
         c = 0
+        divDf = None
         for asset in [col.split('_')[1] for col in portDf]:
-            symbol = tD.reference.loc[tD.reference['Name'] == asset,'linkId'].iloc[0]
+            symbol = self.reference.loc[self.reference['Name'] == asset,'linkId'].iloc[0]
             with urllib.request.urlopen(f"https://tools.morningstar.es/api/rest.svc/timeseries_dividend/2nhcdckzon?id={symbol}%5D22%5D1%5D&idtype=Morningstar&frequency=monthly&timePeriod=200&outputType=COMPACTJSON") as url:
                 data = json.loads(url.read().decode())
                 if len(data) > 0:
@@ -110,8 +116,11 @@ class Dashboard:
         if len(weights) != len(self.df.columns):
             raise NameError('There has to be an equal amount of weights and assets')
         
-        if sum(weights) != 1:
-            raise NameError('Sum of weights has to equal to 1')
+        if not 0.98 <= sum(weights) <= 1.01:
+            raise NameError('Sum of weights has to be equal to 1')
+            
+        corr = self.df.corr()
+        display(corr.style.background_gradient(cmap='coolwarm'))
                 
         retsDf = self.df.pct_change()
         capital_weight = self._get_number_assets(weights, initial_capital)
@@ -128,10 +137,11 @@ class Dashboard:
         revDf = pd.DataFrame()
         divs = self._get_dividends(self.df)
         
-        for col in divs.columns:
-            s_name = col.split('_')[1]
-            if ('Price_'+col.split('_')[1]) in capital_weight.keys():
-                revDf[f'Revenue_{s_name}'] = divs[col] * capital_weight['Price_'+ col.split('_')[1]]
+        if divs is not None:
+            for col in divs.columns:
+                s_name = col.split('_')[1]
+                if ('Price_'+col.split('_')[1]) in capital_weight.keys():
+                    revDf[f'Revenue_{s_name}'] = divs[col] * capital_weight['Price_'+ col.split('_')[1]]
                 
                 
         retsDf['Equity Curve'].plot()
@@ -150,16 +160,70 @@ class Dashboard:
             revSum.groupby(revSum.index.year)['RevSum'].sum().plot()
             plt.title('Annual Dividend Income')
             plt.show()
-            print(revSum)
-            print(revSum.groupby(revSum.index.year)['RevSum'].sum())
+            display(revSum)
+            display(revSum.groupby(revSum.index.year)['RevSum'].sum())
         
         revDf['Total Revenue'] = revDf.sum(axis=1)
         revDf['Total Revenue'].cumsum().plot()
         plt.title('Portfolio Cumulative Income')
         plt.show()
+        
     
     def MPT(self, constraints):
-        pass
+        
+        cov_matrix = self.df.pct_change().apply(lambda x: np.log(1+x)).cov()
+        ind_er = self.df.resample('Y').last().pct_change().mean()
+        ann_sd = self.df.pct_change().apply(lambda x: np.log(1+x)).std().apply(lambda x: x*np.sqrt(250))
+        
+        p_ret = [] # Define an empty array for portfolio returns
+        p_vol = [] # Define an empty array for portfolio volatility
+        p_weights = [] # Define an empty array for asset weights
+
+        num_assets = len(self.df.columns)
+        num_portfolios = 10000
+
+
+        for portfolio in range(num_portfolios):
+            weights = np.random.random(num_assets)
+            weights = weights/np.sum(weights)
+            p_weights.append(weights)
+            returns = np.dot(weights, ind_er) # Returns are the product of individual expected returns of asset and its 
+                                              # weights 
+            p_ret.append(returns)
+            var = cov_matrix.mul(weights, axis=0).mul(weights, axis=1).sum().sum()# Portfolio Variance
+            sd = np.sqrt(var) # Daily standard deviation
+            ann_sd = sd*np.sqrt(250) # Annual standard deviation = volatility
+            p_vol.append(ann_sd)
+
+        data = {'Returns':p_ret, 'Volatility':p_vol}
+        
+        
+        for counter, symbol in enumerate(self.df.columns.tolist()):
+            data[symbol+' weight'] = [w[counter] for w in p_weights]
+
+        portfolios  = pd.DataFrame(data)
+        min_vol_port = portfolios.iloc[portfolios['Volatility'].idxmin()]
+        # idxmin() gives us the minimum value in the column specified.
+        
+        rf = 0.01 # risk factor
+        optimal_risky_port = portfolios.iloc[((portfolios['Returns']-rf)/portfolios['Volatility']).idxmax()]
+        
+        plt.subplots(figsize=(10, 10))
+        plt.scatter(portfolios['Volatility'], portfolios['Returns'],marker='o', s=10, alpha=0.3)
+        plt.scatter(min_vol_port[1], min_vol_port[0], color='r', marker='*', s=500)
+        plt.scatter(optimal_risky_port[1], optimal_risky_port[0], color='g', marker='*', s=500)
+        
+        plt.xlabel('Volatility')
+        plt.ylabel('Returns')
+        
+        print('Minimum Volatility Portfolio: ')
+        display(min_vol_port)
+        print(min_vol_port.to_list()[2:])
+        print('Maximum Sharpe Ratio Portfolio: ')
+        display(optimal_risky_port)
+        print(optimal_risky_port.to_list()[2:])
+        
+        
             
     def visualize_data(self):
         
