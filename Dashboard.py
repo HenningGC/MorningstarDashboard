@@ -108,7 +108,7 @@ class Dashboard:
     
     
             
-    def analyze_portfolio(self, weights, initial_capital):
+    def analyze_portfolio(self, weights, initial_capital, skip = 'No'):
         
         if not isinstance(weights, list):
             raise TypeError("data must be set to a list")
@@ -118,9 +118,10 @@ class Dashboard:
         
         if not 0.98 <= sum(weights) <= 1.01:
             raise NameError('Sum of weights has to be equal to 1')
-            
-        corr = self.df.corr()
-        display(corr.style.background_gradient(cmap='coolwarm'))
+        
+        if skip == 'No':
+            corr = self.df.corr()
+            display(corr.style.background_gradient(cmap='coolwarm'))
                 
         retsDf = self.df.pct_change()
         capital_weight = self._get_number_assets(weights, initial_capital)
@@ -143,30 +144,33 @@ class Dashboard:
                 if ('Price_'+col.split('_')[1]) in capital_weight.keys():
                     revDf[f'Revenue_{s_name}'] = divs[col] * capital_weight['Price_'+ col.split('_')[1]]
                 
-                
-        retsDf['Equity Curve'].plot()
-        plt.title('Portfolio Equity Curve')
-        plt.show()
-        
-        revDf.sum(axis=1).plot()
-        #plt.bar(, revDf.sum(axis=1).index, revDf.sum(axis=1))
-        plt.title('Portfolio Dividends')
-        #plt.legend(bbox_to_anchor = (1.80, 0.6))
-        plt.show()
-        
+        if skip == 'No':        
+            retsDf['Equity Curve'].plot()
+            plt.title('Portfolio Equity Curve')
+            plt.show()
+            
+            revDf.sum(axis=1).plot()
+            #plt.bar(, revDf.sum(axis=1).index, revDf.sum(axis=1))
+            plt.title('Portfolio Dividends')
+            #plt.legend(bbox_to_anchor = (1.80, 0.6))
+            plt.show()
+        self.revSumY = pd.DataFrame()
         if len(revDf) > 0:
             revSum = pd.DataFrame()
             revSum['RevSum'] = revDf.sum(axis=1)
-            revSum.groupby(revSum.index.year)['RevSum'].sum().plot()
-            plt.title('Annual Dividend Income')
-            plt.show()
-            display(revSum)
-            display(revSum.groupby(revSum.index.year)['RevSum'].sum())
+            if skip == 'No':
+                revSum.groupby(revSum.index.year)['RevSum'].sum().plot()
+                plt.title('Annual Dividend Income')
+                plt.show()
+                display(revSum)
+                display(revSum.groupby(revSum.index.year)['RevSum'].sum())
+            self.revSumY = revSum.groupby(revSum.index.year)['RevSum'].sum()
         
-        revDf['Total Revenue'] = revDf.sum(axis=1)
-        revDf['Total Revenue'].cumsum().plot()
-        plt.title('Portfolio Cumulative Income')
-        plt.show()
+        if skip == 'No':
+            revDf['Total Revenue'] = revDf.sum(axis=1)
+            revDf['Total Revenue'].cumsum().plot()
+            plt.title('Portfolio Cumulative Income')
+            plt.show()
         
     
     def MPT(self, constraints):
@@ -201,15 +205,15 @@ class Dashboard:
         for counter, symbol in enumerate(self.df.columns.tolist()):
             data[symbol+' weight'] = [w[counter] for w in p_weights]
 
-        portfolios  = pd.DataFrame(data)
-        min_vol_port = portfolios.iloc[portfolios['Volatility'].idxmin()]
+        self.portfolios  = pd.DataFrame(data)
+        min_vol_port = self.portfolios.iloc[self.portfolios['Volatility'].idxmin()]
         # idxmin() gives us the minimum value in the column specified.
         
         rf = 0.01 # risk factor
-        optimal_risky_port = portfolios.iloc[((portfolios['Returns']-rf)/portfolios['Volatility']).idxmax()]
+        optimal_risky_port = self.portfolios.iloc[((self.portfolios['Returns']-rf)/self.portfolios['Volatility']).idxmax()]
         
         plt.subplots(figsize=(10, 10))
-        plt.scatter(portfolios['Volatility'], portfolios['Returns'],marker='o', s=10, alpha=0.3)
+        plt.scatter(self.portfolios['Volatility'], self.portfolios['Returns'],marker='o', s=10, alpha=0.3)
         plt.scatter(min_vol_port[1], min_vol_port[0], color='r', marker='*', s=500)
         plt.scatter(optimal_risky_port[1], optimal_risky_port[0], color='g', marker='*', s=500)
         
@@ -239,4 +243,4 @@ class Dashboard:
         plt.legend(bbox_to_anchor = (1.05, 0.6))
         #plt.tight_layout()
         plt.grid(True)
-        plt.show()
+        plt.show()   
